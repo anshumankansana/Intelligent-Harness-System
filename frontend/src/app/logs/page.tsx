@@ -23,7 +23,7 @@ import { LogTerminal } from "@/components/harness/LogTerminal";
 import { AgentFindingsPanel } from "@/components/harness/AgentFindingsPanel";
 import type { DebateMessage } from "@/store/debateStore";
 import { cn } from "@/lib/utils";
-import { isDeployInProgress, projectPatchFromStage } from "@/lib/runStage";
+import { isDeployInProgress, mergeProjectPatchFromStage } from "@/lib/runStage";
 
 function RunStatusPanel({
   status,
@@ -245,15 +245,16 @@ function LogsContent() {
       setStatus(data);
       const gh = data.context?.github_url || "";
       const dep = data.context?.deploy_url || "";
-      updateProject(
-        activeRun,
-        projectPatchFromStage(data.stage, {
+      const p = useHarnessStore.getState().projects.find((x) => x.id === activeRun);
+      if (p) {
+        const patch = mergeProjectPatchFromStage(p, data.stage, {
           approvalStatus: data.approval?.status,
           githubUrl: gh,
           deployUrl: dep,
           projectMode: data.project_mode,
-        })
-      );
+        });
+        if (Object.keys(patch).length) updateProject(activeRun, patch);
+      }
     } catch {
       /* backend offline */
     }
