@@ -62,7 +62,7 @@ Desktop.ini
 
 # --- Logs & temp ---
 *.log
-logs/
+/logs/
 backend/workspace/
 **/_uploads/
 *.tmp
