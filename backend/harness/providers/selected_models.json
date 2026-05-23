@@ -1,7 +1,7 @@
 {
   "groq": "llama-3.3-70b-versatile",
   "groq_fast": "llama-3.3-70b-versatile",
-  "groq_planner": "openai/gpt-oss-120b",
+  "groq_planner": "llama-3.3-70b-versatile",
   "gemini": "gemini-2.5-flash-lite",
   "gemini_planner": "gemini-2.5-flash-lite",
   "gemini_fast": "gemini-2.5-flash-lite",

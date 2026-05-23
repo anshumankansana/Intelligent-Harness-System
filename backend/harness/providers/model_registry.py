@@ -13,7 +13,7 @@ _cached: Optional[Dict[str, str]] = None
 FALLBACK_MODELS = {
     "groq": "llama-3.3-70b-versatile",
     "groq_fast": "llama-3.3-70b-versatile",
-    "groq_planner": "openai/gpt-oss-120b",
+    "groq_planner": "llama-3.3-70b-versatile",
     "openrouter": "openrouter/free",
     "openrouter_fast": "openrouter/free",
     "openrouter_planner": "openrouter/free",
