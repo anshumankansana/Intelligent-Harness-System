@@ -15,7 +15,7 @@ services:
       - key: DEFAULT_PROVIDER
         value: groq
       - key: CORS_ORIGINS
-        sync: false
+        value: https://intelligent-harness-system-12345.vercel.app,http://localhost:3000
       - key: GITHUB_TOKEN
         sync: false
       - key: VERCEL_TOKEN

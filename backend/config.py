@@ -13,7 +13,10 @@ class Settings(BaseSettings):
     github_token: str = ""
     vercel_token: str = ""
     vercel_scope: str = ""  # Team slug for CLI, e.g. anshumans-projects-671c73a5
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = (
+        "http://localhost:3000,"
+        "https://intelligent-harness-system-12345.vercel.app"
+    )
     workspace_root: str = "../workspace"
 
     class Config:

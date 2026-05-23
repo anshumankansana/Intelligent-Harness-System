@@ -119,7 +119,11 @@ class RunEnvRequest(BaseModel):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "intelligent-harness"}
+    return {
+        "status": "ok",
+        "service": "intelligent-harness",
+        "cors_origins": settings.cors_list,
+    }
 
 
 @app.post("/api/runs/start")
