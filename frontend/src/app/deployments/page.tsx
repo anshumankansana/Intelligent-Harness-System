@@ -5,7 +5,15 @@ import Link from "next/link";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useHarnessStore } from "@/store/harnessStore";
 import { useSyncDeployments } from "@/hooks/useSyncDeployments";
-import { getDeployments, getRun, redeployRun, type DeploymentRecord } from "@/lib/api";
+import {
+  getDeployments,
+  listRuns,
+  getRun,
+  redeployRun,
+  mergeDeploymentSources,
+  type DeploymentRecord,
+} from "@/lib/api";
+import { API_URL } from "@/lib/utils";
 import { isDeployInProgress } from "@/lib/runStage";
 import { ExternalLink, Rocket, Github, RefreshCw } from "lucide-react";
 
@@ -13,6 +21,7 @@ export default function DeploymentsPage() {
   const { projects, updateProject } = useHarnessStore();
   const [deployments, setDeployments] = useState<DeploymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [redeploying, setRedeploying] = useState<string | null>(null);
   const [deployingRunIds, setDeployingRunIds] = useState<Set<string>>(new Set());
   const [redeployError, setRedeployError] = useState<string | null>(null);
@@ -20,34 +29,49 @@ export default function DeploymentsPage() {
   useSyncDeployments(true);
 
   const load = useCallback(async () => {
+    setApiError(null);
+    let apiRows: DeploymentRecord[] = [];
+
     try {
-      const data = await getDeployments();
-      setDeployments(data.deployments || []);
-    } catch {
-      setDeployments(
-        projects
-          .filter((p) => p.githubUrl || p.deployUrl || p.status === "live")
-          .map((p) => ({
-            run_id: p.id,
-            title: p.title,
-            stage: p.phase === "DONE" ? "complete" : p.phase.toLowerCase(),
-            github_url: p.githubUrl || "",
-            deploy_url: p.deployUrl || "",
-            user_idea: p.description,
-          }))
-      );
-    } finally {
-      setLoading(false);
+      const [depRes, runsRes] = await Promise.all([
+        getDeployments().catch(() => ({ deployments: [] as DeploymentRecord[] })),
+        listRuns().catch(() => ({ runs: [] as DeploymentRecord[] })),
+      ]);
+      const byId = new Map<string, DeploymentRecord>();
+      for (const r of runsRes.runs || []) {
+        byId.set(r.run_id, r);
+      }
+      for (const d of depRes.deployments || []) {
+        byId.set(d.run_id, { ...byId.get(d.run_id), ...d });
+      }
+      apiRows = Array.from(byId.values());
+    } catch (e) {
+      setApiError(e instanceof Error ? e.message : String(e));
+      try {
+        const depRes = await getDeployments();
+        apiRows = depRes.deployments || [];
+      } catch (e2) {
+        setApiError(e2 instanceof Error ? e2.message : String(e2));
+      }
     }
+
+    let merged = mergeDeploymentSources(apiRows, projects);
+
+    if (!merged.length && apiRows.length) {
+      merged = apiRows;
+    }
+
+    setDeployments(merged);
+    setLoading(false);
   }, [projects]);
 
   useEffect(() => {
+    setLoading(true);
     load();
-    const interval = setInterval(load, 5000);
+    const interval = setInterval(load, 8000);
     return () => clearInterval(interval);
   }, [load]);
 
-  /** Poll API stages so redeploy stays locked until backend leaves `deploying` */
   useEffect(() => {
     const ids = deployments.map((d) => d.run_id);
     if (!ids.length && !redeploying) return;
@@ -112,11 +136,19 @@ export default function DeploymentsPage() {
       <PageHeader
         eyebrow="// DEPLOYMENTS"
         title="Deployments"
-        description="GitHub pushes and real Vercel production URLs from completed harness runs."
+        description="GitHub and Vercel URLs from the server, plus projects from this browser session."
         showNewProject={false}
       />
 
       <div className="px-8 py-6">
+        {apiError && (
+          <div className="mb-4 rounded border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            API: <code className="text-harness-cyan">{API_URL}</code> — {apiError}. Showing
+            browser-saved projects when available. Redeploy frontend on Vercel if the URL is
+            localhost.
+          </div>
+        )}
+
         {deployBusy && (
           <div className="mb-4 rounded border border-harness-cyan/40 bg-harness-cyan/10 px-4 py-3 text-sm text-cyan-100">
             Deployment in progress — redeploy buttons stay disabled until Vercel finishes (check{" "}
@@ -126,7 +158,7 @@ export default function DeploymentsPage() {
             >
               run logs
             </Link>
-            ). Large builds can take several minutes after npm finishes.
+            ).
           </div>
         )}
         {hasStub && (
@@ -148,19 +180,31 @@ export default function DeploymentsPage() {
         ) : deployments.length === 0 ? (
           <div className="panel px-8 py-12 text-center text-slate-400">
             <Rocket className="mx-auto mb-3 h-8 w-8 text-harness-muted" />
-            <p className="text-sm">No completed runs found yet.</p>
-            <p className="mt-2 text-xs text-slate-500">
-              Finish a harness run with <code className="text-harness-cyan">GITHUB_TOKEN</code> and{" "}
-              <code className="text-harness-cyan">VERCEL_TOKEN</code> in backend{" "}
-              <code className="text-harness-cyan">.env</code> to push and deploy.
+            <p className="text-sm">No publishable runs yet.</p>
+            <p className="mt-2 text-xs text-slate-500 max-w-md mx-auto">
+              Complete a harness run on the{" "}
+              <Link href="/new" className="text-harness-cyan underline">
+                live site
+              </Link>{" "}
+              (build → ready to publish), then return here. Projects are stored on the server at{" "}
+              <code className="text-harness-cyan">{API_URL}</code>.
             </p>
+            {projects.length > 0 && (
+              <p className="mt-3 text-xs text-amber-200/90">
+                You have {projects.length} project(s) in this browser — open the{" "}
+                <Link href="/" className="underline">
+                  Dashboard
+                </Link>{" "}
+                and use GitHub / Deploy on the card when the run reaches Ready.
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
             {!hasUrls && (
               <p className="mb-4 text-sm text-amber-200/90">
-                Runs completed locally but no GitHub/Vercel URLs were saved — check tokens in backend{" "}
-                <code className="text-harness-cyan">.env</code>.
+                Builds found on the server — use <strong>GitHub</strong> / <strong>Deploy</strong> on
+                the Dashboard card or redeploy below when a repo exists.
               </p>
             )}
             {deployments.map((d) => {
@@ -168,6 +212,12 @@ export default function DeploymentsPage() {
                 redeploying === d.run_id ||
                 (deployingRunIds.has(d.run_id) && !d.deploy_url) ||
                 (deployBusy && !d.deploy_url);
+              const stageLabel =
+                d.stage === "ready_to_publish"
+                  ? "Ready to publish"
+                  : d.stage === "complete"
+                    ? "Complete"
+                    : d.stage.replace(/_/g, " ");
               return (
                 <div
                   key={d.run_id}
@@ -176,8 +226,12 @@ export default function DeploymentsPage() {
                   <div className="min-w-0">
                     <p className="font-semibold capitalize text-white">{d.title}</p>
                     <p className="font-mono text-[10px] text-harness-muted">run {d.run_id}</p>
+                    <span className="mt-2 inline-block rounded border border-harness-border/60 px-2 py-0.5 text-[10px] uppercase text-slate-400">
+                      {stageLabel}
+                      {d.progress != null ? ` · ${d.progress}%` : ""}
+                    </span>
                     {d.stage === "complete" && (
-                      <span className="badge-live mt-2 inline-block">Complete</span>
+                      <span className="badge-live mt-2 ml-2 inline-block">Complete</span>
                     )}
                     {(redeploying === d.run_id ||
                       (deployingRunIds.has(d.run_id) && !d.deploy_url)) && (
@@ -206,7 +260,12 @@ export default function DeploymentsPage() {
                         GitHub <ExternalLink className="h-3 w-3" />
                       </a>
                     ) : (
-                      <span className="text-xs text-slate-500">No GitHub URL</span>
+                      <Link
+                        href={`/?run=${d.run_id}`}
+                        className="text-xs text-harness-cyan hover:underline"
+                      >
+                        Publish to GitHub →
+                      </Link>
                     )}
                     {d.deploy_url ? (
                       <a
@@ -223,7 +282,9 @@ export default function DeploymentsPage() {
                         {d.deploy_stub ? "No live deploy yet" : "No deploy URL"}
                       </span>
                     )}
-                    {(d.deploy_stub || (!d.deploy_url && d.github_url)) && (
+                    {(d.deploy_stub ||
+                      (!d.deploy_url &&
+                        (d.github_url || d.has_generated || d.stage === "ready_to_publish"))) && (
                       <button
                         type="button"
                         onClick={() => handleRedeploy(d.run_id)}
@@ -237,7 +298,7 @@ export default function DeploymentsPage() {
                           ? "Deploying…"
                           : deployBusy
                             ? "Deploy in progress…"
-                            : "Redeploy to Vercel"}
+                            : "Deploy to Vercel"}
                       </button>
                     )}
                     <Link

@@ -47,12 +47,15 @@ async def publish_run_to_github(
     await log_fn(f"[INFO] GitHub publish only (no Vercel) — repo '{repo_name}'...")
 
     gh = GitHubAutomation(github_token, log_fn)
-    url: Optional[str] = await gh.push_project(project_dir, repo_name)
+    url: Optional[str]
+    push_err: str
+    url, push_err = await gh.push_project(project_dir, repo_name)
 
     if not url:
         state["stage"] = prior_stage if prior_stage != "publishing_github" else "ready_to_publish"
         save_state(run_dir, state)
-        return {"ok": False, "error": "GitHub push failed — see logs"}
+        detail = push_err or "GitHub push failed — see logs"
+        return {"ok": False, "error": detail}
 
     state["github_url"] = url
     state["repo_slug"] = repo_name

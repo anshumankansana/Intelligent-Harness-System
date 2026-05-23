@@ -263,6 +263,22 @@ class HarnessOrchestrator:
                 await self.log(run_id, "Resuming harness after approval...")
                 self._spawn(run_id, self._continue_after_approval(run_id))
 
+    def _pipeline_progress_stage(self, run_dir: Path, state: dict) -> str:
+        """Where the run actually is on disk — avoid restarting debate/approval after fallback."""
+        mem = run_dir / "memory"
+        gen = run_dir / "generated"
+        approval = (state.get("approval_status") or "").lower()
+        has_generated = gen.exists() and any(gen.iterdir())
+        has_debate = (mem / "DEBATE_SUMMARY.md").exists()
+
+        if approval in ("approved", "approve") and has_generated:
+            return "validating"
+        if approval in ("approved", "approve"):
+            return "building"
+        if has_debate:
+            return "awaiting_approval"
+        return "planning"
+
     async def _resume_from_checkpoint(self, run_id: str) -> None:
         ctx = self._ctx(run_id)
         run_dir = self._run_dir(run_id)
@@ -276,6 +292,35 @@ class HarnessOrchestrator:
             state = load_state(run_dir) or {}
             mode = state.get("project_mode", "new")
             if step == "planning":
+                progress = self._pipeline_progress_stage(run_dir, state)
+                if progress == "awaiting_approval" and mode != "update":
+                    approval = (state.get("approval_status") or "").lower()
+                    if approval in ("approved", "approve"):
+                        await self.log(run_id, "Resuming build (already approved).")
+                        await self._build_validate_deploy(run_id, ctx, run_dir, memory, log)
+                        return
+                    self._set_stage(run_id, "awaiting_approval", approval_status="pending")
+                    await self.log(
+                        run_id,
+                        "Resuming at approval (debate already done — not re-running planner).",
+                    )
+                    await self._wait_for_approval(run_id, ctx)
+                    if ctx.approval_status == "rejected":
+                        self._set_stage(run_id, "rejected")
+                        return
+                    await self._build_validate_deploy(run_id, ctx, run_dir, memory, log)
+                    return
+                if progress == "building" and mode != "update":
+                    self._set_stage(run_id, "building")
+                    await self.log(run_id, "Resuming build after provider fallback…")
+                    await self._build_validate_deploy(run_id, ctx, run_dir, memory, log)
+                    return
+                if progress == "validating" and mode != "update":
+                    self._set_stage(run_id, "validating")
+                    await self.log(run_id, "Resuming validation after provider fallback…")
+                    await self._validate_and_deploy(run_id, ctx, run_dir, log)
+                    return
+
                 idea = state.get("user_idea") or ctx.user_idea
                 if mode == "update" and not idea.strip().upper().startswith("UPDATE"):
                     idea = await self._build_update_idea(run_id, ctx, run_dir)
@@ -288,7 +333,15 @@ class HarnessOrchestrator:
                     ctx.inject_human_context(),
                     step="planning",
                 )
-                await self._run_debate_and_approval(run_id, ctx, run_dir, memory, log)
+                if not (run_dir / "memory" / "DEBATE_SUMMARY.md").exists() or mode == "update":
+                    await self._run_debate_and_approval(run_id, ctx, run_dir, memory, log)
+                elif self._pipeline_progress_stage(run_dir, load_state(run_dir) or {}) == "awaiting_approval":
+                    self._set_stage(run_id, "awaiting_approval", approval_status="pending")
+                    await self._wait_for_approval(run_id, ctx)
+                    if ctx.approval_status != "rejected":
+                        await self._build_validate_deploy(run_id, ctx, run_dir, memory, log)
+                else:
+                    await self._build_validate_deploy(run_id, ctx, run_dir, memory, log)
             elif step == "building":
                 self._set_stage(run_id, "building")
                 builder = BuilderEngine(self.factory, run_dir / "generated", log, run_id=run_id)

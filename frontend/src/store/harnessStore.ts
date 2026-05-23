@@ -27,6 +27,12 @@ interface ProviderKeys {
   defaultProvider: ProviderName;
 }
 
+interface DeployTokens {
+  github: string;
+  vercel: string;
+  vercelScope: string;
+}
+
 /** When true, harness uses backend .env only — browser does not send LLM keys */
 export type EnvConfigMode = "browser" | "backend";
 
@@ -39,6 +45,7 @@ interface HarnessState {
   approvalPlan: string;
   approvalStatus: string;
   providerKeys: ProviderKeys;
+  deployTokens: DeployTokens;
   envConfigMode: EnvConfigMode;
   githubUrl: string;
   deployUrl: string;
@@ -50,6 +57,7 @@ interface HarnessState {
   setMemoryFiles: (files: Record<string, string>) => void;
   setApproval: (plan: string, status: string) => void;
   setProviderKeys: (keys: Partial<ProviderKeys>) => void;
+  setDeployTokens: (tokens: Partial<DeployTokens>) => void;
   setEnvConfigMode: (mode: EnvConfigMode) => void;
   setUrls: (github: string, deploy: string) => void;
   addProject: (project: HarnessProject) => void;
@@ -74,6 +82,7 @@ export const useHarnessStore = create<HarnessState>()(
         openrouter: "",
         defaultProvider: "groq",
       },
+      deployTokens: { github: "", vercel: "", vercelScope: "" },
       envConfigMode: "backend",
       githubUrl: "",
       deployUrl: "",
@@ -125,6 +134,8 @@ export const useHarnessStore = create<HarnessState>()(
       setApproval: (approvalPlan, approvalStatus) => set({ approvalPlan, approvalStatus }),
       setProviderKeys: (keys) =>
         set((s) => ({ providerKeys: { ...s.providerKeys, ...keys } })),
+      setDeployTokens: (tokens) =>
+        set((s) => ({ deployTokens: { ...s.deployTokens, ...tokens } })),
       setEnvConfigMode: (envConfigMode) => set({ envConfigMode }),
       setUrls: (githubUrl, deployUrl) => {
         set({ githubUrl, deployUrl });
@@ -151,6 +162,7 @@ export const useHarnessStore = create<HarnessState>()(
       name: "harness-store",
       partialize: (s) => ({
         providerKeys: s.providerKeys,
+        deployTokens: s.deployTokens,
         envConfigMode: s.envConfigMode,
         projects: s.projects,
       }),

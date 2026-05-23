@@ -156,9 +156,44 @@ def infer_stage_from_disk(run_dir: Path) -> str:
     return "awaiting_approval"
 
 
+def _stage_from_artifacts(run_dir: Path, state: dict) -> str:
+    """Best-effort stage when persisted stage is stale (e.g. planning during inactive fallback)."""
+    mem = run_dir / "memory"
+    gen = run_dir / "generated"
+    approval = (state.get("approval_status") or approval_status_from_state(state)).lower()
+    has_generated = gen.exists() and any(gen.iterdir())
+    deploy_url = (state.get("deploy_url") or "").strip()
+    if deploy_url and not is_stub_deploy_url(run_dir.name, deploy_url):
+        return "complete"
+    if state.get("stage") in ("ready_to_publish", "publishing_github", "deploying"):
+        return state.get("stage")
+    if approval in ("approved", "approve") and has_generated:
+        return state.get("stage") if state.get("stage") in ACTIVE_PIPELINE_STAGES else "ready_to_publish"
+    if approval in ("approved", "approve"):
+        return "building"
+    if (mem / "DEBATE_SUMMARY.md").exists():
+        if approval in ("rejected",):
+            return "rejected"
+        return "awaiting_approval"
+    md_count = len(list(mem.glob("*.md"))) if mem.exists() else 0
+    if md_count >= 3:
+        return "debate"
+    return "planning"
+
+
+def approval_status_from_state(state: dict) -> str:
+    return (state.get("approval_status") or "").strip()
+
+
 def get_run_status(run_dir: Path, approval_status: str = "") -> Dict[str, Any]:
     state = reconcile_run_state(run_dir, persist=True)
     stage = state.get("stage") or infer_stage_from_disk(run_dir)
+
+    # Stale "planning" on disk while artifacts show we're further along (poll was resetting UI)
+    if stage == "planning":
+        artifact_stage = _stage_from_artifacts(run_dir, state)
+        if STAGE_PROGRESS.get(artifact_stage, 0) > STAGE_PROGRESS.get("planning", 0):
+            stage = artifact_stage
 
     # Stage on disk wins — do not downgrade awaiting_approval because of stale "approved"
     if stage == "awaiting_approval":

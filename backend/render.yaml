@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: intelligent-harness-api
+    name: intelligent-harness-system
     env: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt

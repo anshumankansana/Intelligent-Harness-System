@@ -8,7 +8,7 @@ import type { HarnessProject, ProjectStatus } from "@/store/harnessStore";
 import { useHarnessStore } from "@/store/harnessStore";
 import { deleteRun, getRun } from "@/lib/api";
 import { closeHarnessSocket } from "@/hooks/useHarnessSocket";
-import { projectPatchFromStage } from "@/lib/runStage";
+import { mergeProjectPatchFromStage } from "@/lib/runStage";
 import { ProjectActions } from "./ProjectActions";
 
 function StatusBadge({
@@ -53,15 +53,13 @@ export function ProjectCard({ project, updatePanelOpen, onUpdatePanelOpenChange 
           setStage(d.stage);
           const gh = d.context?.github_url || "";
           const dep = d.context?.deploy_url || "";
-          updateProject(
-            project.id,
-            projectPatchFromStage(d.stage, {
-              approvalStatus: d.approval?.status,
-              githubUrl: gh || project.githubUrl,
-              deployUrl: dep || project.deployUrl,
-              projectMode: d.project_mode,
-            })
-          );
+          const patch = mergeProjectPatchFromStage(project, d.stage, {
+            approvalStatus: d.approval?.status,
+            githubUrl: gh || project.githubUrl,
+            deployUrl: dep || project.deployUrl,
+            projectMode: d.project_mode,
+          });
+          if (Object.keys(patch).length) updateProject(project.id, patch);
         })
         .catch(() => {});
     sync();

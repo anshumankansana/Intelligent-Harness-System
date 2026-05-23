@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { getDeployments, getRun } from "@/lib/api";
-import { projectPatchFromStage } from "@/lib/runStage";
+import { mergeProjectPatchFromStage } from "@/lib/runStage";
 import { useHarnessStore } from "@/store/harnessStore";
 
 /** Sync GitHub / Vercel URLs and stage from backend into project cards. */
@@ -18,13 +18,23 @@ export function useSyncDeployments(enabled = true) {
           const existing = projects.find((p) => p.id === d.run_id);
           const effectiveStage =
             d.deploy_url && d.stage === "deploying" ? "complete" : d.stage;
-          const patch = projectPatchFromStage(effectiveStage, {
-            githubUrl: d.github_url || existing?.githubUrl,
-            deployUrl: d.deploy_url || existing?.deployUrl,
-            projectMode: effectiveStage === "planning" ? "update" : undefined,
-          });
+          const patch = mergeProjectPatchFromStage(
+            existing ?? {
+              progress: 0,
+              phase: "",
+              status: "building",
+              githubUrl: d.github_url,
+              deployUrl: d.deploy_url,
+            },
+            effectiveStage,
+            {
+              githubUrl: d.github_url || existing?.githubUrl,
+              deployUrl: d.deploy_url || existing?.deployUrl,
+              projectMode: existing?.projectMode,
+            }
+          );
           if (existing) {
-            updateProject(d.run_id, patch);
+            if (Object.keys(patch).length) updateProject(d.run_id, patch);
           } else if (d.github_url || d.deploy_url || effectiveStage === "complete") {
             addProject({
               id: d.run_id,
@@ -46,15 +56,13 @@ export function useSyncDeployments(enabled = true) {
             const data = await getRun(p.id);
             const gh = data.context?.github_url || "";
             const dep = data.context?.deploy_url || "";
-            updateProject(
-              p.id,
-              projectPatchFromStage(data.stage, {
-                approvalStatus: data.approval?.status,
-                githubUrl: gh || p.githubUrl,
-                deployUrl: dep || p.deployUrl,
-                projectMode: data.project_mode,
-              })
-            );
+            const patch = mergeProjectPatchFromStage(p, data.stage, {
+              approvalStatus: data.approval?.status,
+              githubUrl: gh || p.githubUrl,
+              deployUrl: dep || p.deployUrl,
+              projectMode: data.project_mode,
+            });
+            if (Object.keys(patch).length) updateProject(p.id, patch);
           } catch {
             /* offline */
           }

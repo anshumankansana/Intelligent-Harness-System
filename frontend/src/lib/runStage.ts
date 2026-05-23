@@ -68,6 +68,56 @@ export function shouldAdvancePhase(currentPhase: string, nextPhase: string): boo
   return next >= cur;
 }
 
+/** Backend stage ordering — used to avoid poll/WebSocket downgrading the UI. */
+export const STAGE_RANK: Record<string, number> = {
+  planning: 15,
+  debate: 35,
+  awaiting_approval: 50,
+  approved: 55,
+  rejected: 0,
+  building: 70,
+  validating: 85,
+  validation_failed: 80,
+  awaiting_fallback: 82,
+  ready_to_publish: 90,
+  publishing_github: 92,
+  deploying: 95,
+  complete: 100,
+  error: 0,
+  unknown: 0,
+};
+
+export function stageRank(stage: string): number {
+  return STAGE_RANK[stage] ?? 0;
+}
+
+/**
+ * Merge API stage into a project card without jumping back to planning/debate
+ * unless this is an explicit update restart or error/reject.
+ */
+export function mergeProjectPatchFromStage(
+  current: Pick<HarnessProject, "progress" | "phase" | "status" | "githubUrl" | "deployUrl">,
+  stage: string,
+  opts?: Parameters<typeof projectPatchFromStage>[1]
+): Partial<HarnessProject> {
+  const patch = projectPatchFromStage(stage, opts);
+  const nextRank = patch.progress ?? stageRank(stage);
+  const curRank = current.progress ?? 0;
+
+  const isUpdateRestart = opts?.projectMode === "update" && stage === "planning";
+  const allowDowngrade =
+    isUpdateRestart || stage === "error" || stage === "rejected";
+
+  if (!allowDowngrade && nextRank < curRank && nextRank > 0) {
+    return {
+      githubUrl: patch.githubUrl || current.githubUrl,
+      deployUrl: patch.deployUrl || current.deployUrl,
+    };
+  }
+
+  return patch;
+}
+
 /** Sync dashboard / logs project card from API stage */
 const ACTIVE_STAGES = new Set([
   "planning",

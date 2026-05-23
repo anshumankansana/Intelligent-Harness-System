@@ -88,6 +88,8 @@ export type DeploymentRecord = {
   deploy_url: string;
   deploy_stub?: boolean;
   user_idea: string;
+  progress?: number;
+  has_generated?: boolean;
 };
 
 export async function redeployRun(runId: string): Promise<{ ok: boolean; deploy_url?: string; error?: string }> {
@@ -96,9 +98,77 @@ export async function redeployRun(runId: string): Promise<{ ok: boolean; deploy_
 }
 
 export async function getDeployments(): Promise<{ deployments: DeploymentRecord[] }> {
-  const res = await fetch(`${API_URL}/api/deployments`);
-  if (!res.ok) throw new Error("Failed to load deployments");
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/deployments`);
+  } catch {
+    throw new Error(`Cannot reach API at ${API_URL}`);
+  }
+  if (!res.ok) throw new Error(`Failed to load deployments (${res.status})`);
   return res.json();
+}
+
+export async function listRuns(): Promise<{ runs: DeploymentRecord[] }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/runs`);
+  } catch {
+    throw new Error(`Cannot reach API at ${API_URL}`);
+  }
+  if (!res.ok) throw new Error(`Failed to list runs (${res.status})`);
+  return res.json();
+}
+
+/** Merge API runs with browser-stored projects (production dashboard uses both). */
+export function mergeDeploymentSources(
+  apiRows: DeploymentRecord[],
+  projects: { id: string; title: string; description: string; githubUrl?: string; deployUrl?: string; status: string; phase: string; progress: number }[]
+): DeploymentRecord[] {
+  const map = new Map<string, DeploymentRecord>();
+
+  for (const d of apiRows) {
+    map.set(d.run_id, d);
+  }
+
+  for (const p of projects) {
+    const publishable =
+      Boolean(p.githubUrl || p.deployUrl) ||
+      p.status === "live" ||
+      p.progress >= 85 ||
+      p.phase === "READY" ||
+      p.phase === "DONE" ||
+      p.phase === "GITHUB" ||
+      p.phase === "VERCEL";
+
+    if (!publishable && map.has(p.id)) continue;
+    if (!publishable) continue;
+
+    const stage =
+      p.phase === "DONE"
+        ? "complete"
+        : p.phase === "READY"
+          ? "ready_to_publish"
+          : p.phase === "GITHUB"
+            ? "publishing_github"
+            : p.phase === "VERCEL"
+              ? "deploying"
+              : "building";
+
+    const existing = map.get(p.id);
+    map.set(p.id, {
+      run_id: p.id,
+      title: p.title || existing?.title || p.id,
+      stage: existing?.stage || stage,
+      github_url: existing?.github_url || p.githubUrl || "",
+      deploy_url: existing?.deploy_url || p.deployUrl || "",
+      deploy_stub: existing?.deploy_stub,
+      user_idea: existing?.user_idea || p.description || "",
+      progress: existing?.progress ?? p.progress,
+      has_generated: existing?.has_generated,
+    });
+  }
+
+  return Array.from(map.values()).sort((a, b) => b.run_id.localeCompare(a.run_id));
 }
 
 export async function deleteRun(runId: string) {
@@ -206,8 +276,20 @@ export async function updateProjectRunWithBrief(
 }
 
 export async function publishGitHub(runId: string) {
-  const res = await fetch(`${API_URL}/api/runs/${runId}/publish/github`, { method: "POST" });
-  return res.json() as Promise<{ ok: boolean; github_url?: string; error?: string }>;
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/runs/${runId}/publish/github`, { method: "POST" });
+  } catch {
+    return {
+      ok: false,
+      error: `Cannot reach API at ${API_URL}. Set NEXT_PUBLIC_API_URL on Vercel to your Render backend.`,
+    };
+  }
+  const data = (await res.json()) as { ok: boolean; github_url?: string; error?: string };
+  if (!res.ok && !data.error) {
+    data.error = `HTTP ${res.status} from API`;
+  }
+  return data;
 }
 
 export async function publishDeploy(runId: string) {
@@ -228,12 +310,27 @@ export type ProviderStatus = {
   backend_env_ready: boolean;
   github: boolean;
   vercel: boolean;
+  git_available?: boolean;
 };
 
 export async function getProviderStatus(): Promise<ProviderStatus> {
   const res = await fetch(`${API_URL}/api/providers/status`);
   if (!res.ok) throw new Error("Failed to load provider status");
   return res.json();
+}
+
+export async function syncDeployTokens(tokens: {
+  github_token?: string;
+  vercel_token?: string;
+  vercel_scope?: string;
+}) {
+  const res = await fetch(`${API_URL}/api/settings/deploy-tokens`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(tokens),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<{ status: string; github: boolean; vercel: boolean }>;
 }
 
 export async function syncProviderKeys(

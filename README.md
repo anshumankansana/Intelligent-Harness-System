@@ -11,6 +11,7 @@ Autonomous engineering harness — planning, debate, human approvals, validation
 | | |
 |---|---|
 | **Live app** | https://intelligent-harness-system-12345.vercel.app/ |
+| **API (Render)** | https://intelligent-harness-system.onrender.com |
 | **Repository** | https://github.com/anshumankansana/Intelligent-Harness-System |
 | **Full overview** | [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) (diagrams, capabilities, pipeline) |
 
@@ -94,8 +95,8 @@ Copy from `backend/.env.example` — **never commit** real `.env` files.
 ### Frontend — Vercel
 
 1. Import `frontend/` as a Next.js project (already deployed at the live URL above).
-2. `NEXT_PUBLIC_API_URL` = your Render API URL (no trailing `/`, e.g. `https://….onrender.com`)  
-3. `NEXT_PUBLIC_WS_URL` = same host with `wss://` (no trailing `/`)
+2. `NEXT_PUBLIC_API_URL` = `https://intelligent-harness-system.onrender.com` (also in `frontend/vercel.json` and `.env.production`)
+3. `NEXT_PUBLIC_WS_URL` = `wss://intelligent-harness-system.onrender.com`
 
 ---
 

@@ -74,6 +74,27 @@ def get_orchestrator() -> HarnessOrchestrator:
     return orchestrator
 
 
+def apply_deploy_tokens(
+    github_token: str = "",
+    vercel_token: str = "",
+    vercel_scope: str = "",
+) -> None:
+    """Update in-memory tokens (Render .env and/or Environment page sync)."""
+    if github_token:
+        settings.github_token = github_token
+    if vercel_token:
+        settings.vercel_token = vercel_token
+    if vercel_scope:
+        settings.vercel_scope = vercel_scope
+    orch = get_orchestrator()
+    if github_token:
+        orch.github_token = github_token
+    if vercel_token:
+        orch.vercel_token = vercel_token
+    if vercel_scope:
+        orch.vercel_scope = vercel_scope
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_list,
@@ -90,6 +111,12 @@ class StartRunRequest(BaseModel):
     gemini_api_key: str = ""
     openrouter_api_key: str = ""
     default_provider: str = "groq"
+
+
+class DeployTokensRequest(BaseModel):
+    github_token: str = ""
+    vercel_token: str = ""
+    vercel_scope: str = ""
 
 
 class ApprovalRequest(BaseModel):
@@ -312,35 +339,112 @@ def _urls_from_run(run_dir: Path, ctx) -> tuple[str, str]:
     return github_url, deploy_url
 
 
-@app.get("/api/deployments")
-async def list_deployments():
-    """List all workspace runs with deployment URLs (persisted in run_state.json)."""
+def _run_title(state: dict, run_id: str) -> str:
+    title = (state.get("project_title") or "").strip()
+    if title:
+        return title[:60] + ("…" if len(title) > 60 else "")
+    idea = (state.get("user_idea", "") or "").strip()
+    if idea:
+        line = idea.split("\n")[0].strip()
+        return (line[:60] + ("…" if len(line) > 60 else "")) if line else f"Run {run_id}"
+    return f"Run {run_id}"
+
+
+def _should_list_deployment(
+    run_dir: Path,
+    stage: str,
+    github_url: str,
+    deploy_url: str,
+) -> bool:
+    """Include runs that are publishable or have build artifacts (not empty planning-only folders)."""
+    if github_url or deploy_url:
+        return True
+    gen = run_dir / "generated"
+    if gen.exists() and any(gen.iterdir()):
+        return True
+    mem = run_dir / "memory"
+    if mem.exists() and len(list(mem.glob("*.md"))) >= 3:
+        if stage in ("planning", "debate"):
+            return False
+        return True
+    return stage in (
+        "complete",
+        "ready_to_publish",
+        "deploying",
+        "publishing_github",
+        "building",
+        "validating",
+        "validation_failed",
+        "awaiting_fallback",
+        "approved",
+    )
+
+
+def _deployment_record_from_run(run_dir: Path) -> dict | None:
+    state = reconcile_run_state(run_dir, persist=True)
+    approval_status = state.get("approval_status", "") or ""
+    status = get_run_status(run_dir, approval_status)
+    stage = status["stage"]
+    github_url = state.get("github_url", "") or ""
+    deploy_url = (state.get("deploy_url") or "").strip()
+    if deploy_url and not is_stub_deploy_url(run_dir.name, deploy_url):
+        stage = "complete"
+    if not _should_list_deployment(run_dir, stage, github_url, deploy_url):
+        return None
+    deploy_stub = is_stub_deploy_url(run_dir.name, deploy_url)
+    return {
+        "run_id": run_dir.name,
+        "title": _run_title(state, run_dir.name),
+        "stage": stage,
+        "github_url": github_url,
+        "deploy_url": "" if deploy_stub else deploy_url,
+        "deploy_stub": deploy_stub,
+        "user_idea": (state.get("user_idea", "") or "").strip(),
+        "progress": status.get("progress", 0),
+        "has_generated": (run_dir / "generated").exists()
+        and any((run_dir / "generated").iterdir()),
+    }
+
+
+@app.get("/api/runs")
+async def list_runs():
+    """All workspace runs (for dashboard sync in production)."""
     items = []
     for run_dir in sorted(workspace.iterdir(), key=lambda p: p.name, reverse=True):
         if not run_dir.is_dir():
             continue
-        state = reconcile_run_state(run_dir, persist=True)
-        github_url = state.get("github_url", "") or ""
-        deploy_url = state.get("deploy_url", "") or ""
-        stage = state.get("stage", "")
-        if deploy_url and not is_stub_deploy_url(run_dir.name, deploy_url):
-            stage = "complete"
-        if not (github_url or deploy_url or stage in ("complete", "ready_to_publish")):
+        rec = _deployment_record_from_run(run_dir)
+        if rec:
+            items.append(rec)
+        else:
+            state = load_state(run_dir) or {}
+            status = get_run_status(run_dir, state.get("approval_status", ""))
+            items.append(
+                {
+                    "run_id": run_dir.name,
+                    "title": _run_title(state, run_dir.name),
+                    "stage": status["stage"],
+                    "github_url": state.get("github_url", "") or "",
+                    "deploy_url": "",
+                    "deploy_stub": False,
+                    "user_idea": (state.get("user_idea", "") or "").strip(),
+                    "progress": status.get("progress", 0),
+                    "has_generated": False,
+                }
+            )
+    return {"runs": items}
+
+
+@app.get("/api/deployments")
+async def list_deployments():
+    """Runs ready to publish, live deploys, or with GitHub/Vercel URLs."""
+    items = []
+    for run_dir in sorted(workspace.iterdir(), key=lambda p: p.name, reverse=True):
+        if not run_dir.is_dir():
             continue
-        idea = (state.get("user_idea", "") or "").strip()
-        title = idea[:60] + ("…" if len(idea) > 60 else "") if idea else f"Run {run_dir.name}"
-        deploy_stub = is_stub_deploy_url(run_dir.name, deploy_url)
-        items.append(
-            {
-                "run_id": run_dir.name,
-                "title": title,
-                "stage": stage,
-                "github_url": github_url,
-                "deploy_url": "" if deploy_stub else deploy_url,
-                "deploy_stub": deploy_stub,
-                "user_idea": idea,
-            }
-        )
+        rec = _deployment_record_from_run(run_dir)
+        if rec:
+            items.append(rec)
     return {"deployments": items}
 
 
@@ -565,8 +669,23 @@ def _mask_key(value: str) -> str:
     return f"{value[:4]}…{value[-4:]}"
 
 
+@app.get("/api/health")
+async def health():
+    import shutil
+
+    return {
+        "ok": True,
+        "github_configured": bool(settings.github_token),
+        "vercel_configured": bool(settings.vercel_token),
+        "git_available": bool(shutil.which("git")),
+        "workspace": str(workspace),
+    }
+
+
 @app.get("/api/providers/status")
 async def providers_status():
+    import shutil
+
     keys = settings.provider_keys()
     configured = [name for name, val in keys.items() if val]
     return {
@@ -578,6 +697,24 @@ async def providers_status():
         "backend_env_ready": len(configured) > 0,
         "github": bool(settings.github_token),
         "vercel": bool(settings.vercel_token),
+        "git_available": bool(shutil.which("git")),
+    }
+
+
+@app.post("/api/settings/deploy-tokens")
+async def update_deploy_tokens(req: DeployTokensRequest):
+    if not any([req.github_token, req.vercel_token, req.vercel_scope]):
+        return {"error": "Provide github_token and/or vercel_token"}
+    apply_deploy_tokens(
+        github_token=req.github_token,
+        vercel_token=req.vercel_token,
+        vercel_scope=req.vercel_scope,
+    )
+    return {
+        "status": "updated",
+        "github": bool(settings.github_token),
+        "vercel": bool(settings.vercel_token),
+        "vercel_scope": bool(settings.vercel_scope),
     }
 
 

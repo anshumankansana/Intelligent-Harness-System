@@ -114,7 +114,10 @@ export function ProjectActions({
                         progress: 90,
                       });
                     } else {
-                      alert(r.error || "GitHub failed");
+                      alert(
+                        r.error ||
+                          "GitHub failed. Open Environment → sync GITHUB_TOKEN, or set it on Render."
+                      );
                     }
                   });
                 }}

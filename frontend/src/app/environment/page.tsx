@@ -11,9 +11,11 @@ import {
   getRunEnv,
   saveRunEnv,
   syncProviderKeys,
+  syncDeployTokens,
   type EnvRequirement,
   type ProviderStatus,
 } from "@/lib/api";
+import { API_URL } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
@@ -23,6 +25,8 @@ function EnvironmentContent() {
   const {
     providerKeys,
     setProviderKeys,
+    deployTokens,
+    setDeployTokens,
     envConfigMode,
     setEnvConfigMode,
     projects,
@@ -36,6 +40,7 @@ function EnvironmentContent() {
   const [projectEnv, setProjectEnv] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const [harnessSaved, setHarnessSaved] = useState(false);
+  const [deploySaved, setDeploySaved] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const loadStatus = useCallback(async () => {
@@ -104,6 +109,26 @@ function EnvironmentContent() {
       setTimeout(() => setHarnessSaved(false), 2000);
     } catch {
       /* offline */
+    }
+    setLoading(false);
+  };
+
+  const handleSaveDeployTokens = async () => {
+    if (!deployTokens.github && !deployTokens.vercel) return;
+    setLoading(true);
+    try {
+      await syncDeployTokens({
+        github_token: deployTokens.github,
+        vercel_token: deployTokens.vercel,
+        vercel_scope: deployTokens.vercelScope,
+      });
+      setDeploySaved(true);
+      await loadStatus();
+      setTimeout(() => setDeploySaved(false), 2000);
+    } catch {
+      alert(
+        `Could not sync deploy tokens to ${API_URL}. Check NEXT_PUBLIC_API_URL on Vercel.`
+      );
     }
     setLoading(false);
   };
@@ -190,8 +215,14 @@ function EnvironmentContent() {
                 : "no keys in backend .env"}{" "}
               · GitHub {providerStatus.github ? "✓" : "—"} · Vercel{" "}
               {providerStatus.vercel ? "✓" : "—"}
+              {providerStatus.git_available === false && (
+                <span className="text-amber-400"> · git missing on server</span>
+              )}
             </div>
           )}
+          <p className="mb-4 text-xs text-slate-500">
+            API: <code className="text-harness-cyan">{API_URL}</code>
+          </p>
 
           {!browserMode && (
             <p className="mb-4 rounded border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
@@ -247,6 +278,46 @@ function EnvironmentContent() {
             Keys synced to the server stay in memory only — not written to disk. For production,
             use backend/.env on Render.
           </p>
+        </Card>
+
+        <Card title="// GitHub & Vercel (publish)">
+          <p className="mb-4 text-sm text-slate-400">
+            <strong className="text-white">GitHub</strong> and <strong className="text-white">Deploy</strong>{" "}
+            buttons need tokens on the API server. Add them to Render <code className="text-harness-cyan">.env</code>{" "}
+            or paste here to sync for this server session (recommended for demos).
+          </p>
+          <div className="space-y-3">
+            <Input
+              type="password"
+              placeholder="GITHUB_TOKEN (classic: repo scope)"
+              value={deployTokens.github}
+              onChange={(e) => setDeployTokens({ github: e.target.value })}
+            />
+            <Input
+              type="password"
+              placeholder="VERCEL_TOKEN"
+              value={deployTokens.vercel}
+              onChange={(e) => setDeployTokens({ vercel: e.target.value })}
+            />
+            <Input
+              placeholder="VERCEL_SCOPE (team slug, optional)"
+              value={deployTokens.vercelScope}
+              onChange={(e) => setDeployTokens({ vercelScope: e.target.value })}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleSaveDeployTokens}
+            disabled={loading || (!deployTokens.github && !deployTokens.vercel)}
+            className="btn-cyan mt-4"
+          >
+            {deploySaved ? "Saved" : "Sync publish tokens to server"}
+          </button>
+          {!providerStatus?.github && (
+            <p className="mt-2 text-xs text-amber-200/90">
+              GitHub publish will fail until a token is configured (server shows —).
+            </p>
+          )}
         </Card>
 
         <Card title="// Project environment (deployed app)">

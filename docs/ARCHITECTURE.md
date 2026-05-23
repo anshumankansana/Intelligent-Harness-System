@@ -11,7 +11,7 @@ User Idea
   → Planner Engine (Gemini preferred)
   → Markdown Memory (TASKS, ARCHITECTURE, etc.)
   → Multi-Agent Debate (Groq/fast)
-  → Human Approval + Edits + Instructions
+  → Human Approval + per-document instructions
   → Builder Engine (Groq/fast)
   → Validation Harness (npm lint/test/build)
   → Retry/Fix Loop (max 2)
@@ -48,9 +48,11 @@ Switch providers via `ProviderFactory` without changing harness logic.
 
 - Dashboard — start runs
 - Live Logs — WebSocket feed
-- Approval Center — approve/reject/edit/instructions
+- Approval Center — read-only docs, instructions, approve/reject
+- Debate Room — live agent conversation
+- Environment — harness + project API keys
+- Deployments — GitHub / Vercel URLs
 - Markdown Viewer — engineering memory
-- API Keys — Groq, Gemini, OpenRouter
 
 ## Hosting (target)
 

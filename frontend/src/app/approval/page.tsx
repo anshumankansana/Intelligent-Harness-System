@@ -24,7 +24,7 @@ import {
 import { useHarnessStore } from "@/store/harnessStore";
 import Link from "next/link";
 import { getRun, getDebate, getMemory, submitApproval } from "@/lib/api";
-import { projectPatchFromStage } from "@/lib/runStage";
+import { mergeProjectPatchFromStage } from "@/lib/runStage";
 import { cn } from "@/lib/utils";
 import { CheckCircle2, XCircle, ArrowRight } from "lucide-react";
 
@@ -67,15 +67,13 @@ function ApprovalContent() {
           stage === "awaiting_approval" ? "pending" : data.approval?.status || "none";
         meta[p.id] = { stage, approvalStatus: st };
         if (stage === "awaiting_approval" || st === "pending") {
-          updateProject(
-            p.id,
-            projectPatchFromStage(stage, {
-              approvalStatus: st,
-              githubUrl: data.context?.github_url,
-              deployUrl: data.context?.deploy_url,
-              projectMode: data.project_mode,
-            })
-          );
+          const patch = mergeProjectPatchFromStage(p, stage, {
+            approvalStatus: st,
+            githubUrl: data.context?.github_url,
+            deployUrl: data.context?.deploy_url,
+            projectMode: data.project_mode,
+          });
+          if (Object.keys(patch).length) updateProject(p.id, patch);
         }
       } catch {
         meta[p.id] = { stage: "unknown", approvalStatus: "none" };
@@ -107,15 +105,16 @@ function ApprovalContent() {
       setApprovalStatus(apiStatus);
       setProjectMode(data.project_mode || "new");
       if (stage === "awaiting_approval") {
-        updateProject(
-          activeRun,
-          projectPatchFromStage(stage, {
+        const p = useHarnessStore.getState().projects.find((x) => x.id === activeRun);
+        if (p) {
+          const patch = mergeProjectPatchFromStage(p, stage, {
             approvalStatus: apiStatus,
             githubUrl: data.context?.github_url,
             deployUrl: data.context?.deploy_url,
             projectMode: data.project_mode,
-          })
-        );
+          });
+          if (Object.keys(patch).length) updateProject(activeRun, patch);
+        }
       }
     };
     const loadDebate = async () => {

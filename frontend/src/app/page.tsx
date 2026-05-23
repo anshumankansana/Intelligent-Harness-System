@@ -10,7 +10,7 @@ import { useHarnessSocket } from "@/hooks/useHarnessSocket";
 import { useSyncDeployments } from "@/hooks/useSyncDeployments";
 import { useEffect, useState } from "react";
 import { getRun } from "@/lib/api";
-import { projectPatchFromStage } from "@/lib/runStage";
+import { mergeProjectPatchFromStage } from "@/lib/runStage";
 
 export default function DashboardPage() {
   const { runId, projects, setUrls, updateProject } = useHarnessStore();
@@ -31,13 +31,13 @@ export default function DashboardPage() {
           const gh = data.context?.github_url || "";
           const dep = data.context?.deploy_url || "";
           const stage = data.stage || "";
-          const patch = projectPatchFromStage(stage, {
+          const patch = mergeProjectPatchFromStage(p, stage, {
             approvalStatus: data.approval?.status,
             githubUrl: gh || p.githubUrl,
             deployUrl: dep || p.deployUrl,
             projectMode: data.project_mode,
           });
-          updateProject(p.id, patch);
+          if (Object.keys(patch).length) updateProject(p.id, patch);
           if (stage === "complete" && p.id === runId) setUrls(gh, dep);
         } catch {
           /* backend offline */
