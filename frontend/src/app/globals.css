@@ -1,0 +1,181 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-harness-bg text-slate-100 antialiased font-sans;
+    background-image: linear-gradient(
+        rgba(34, 211, 238, 0.03) 1px,
+        transparent 1px
+      ),
+      linear-gradient(90deg, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+}
+
+@layer components {
+  .section-label {
+    @apply font-mono text-[11px] tracking-widest text-harness-muted uppercase;
+  }
+
+  .panel {
+    @apply rounded border border-harness-border bg-harness-card/90 backdrop-blur-sm;
+  }
+
+  .stat-card {
+    @apply rounded-lg border border-harness-border bg-harness-card/80 backdrop-blur-sm;
+  }
+
+  .log-terminal {
+    @apply rounded-lg border border-harness-border bg-[#06080c] p-4;
+  }
+
+  .agent-finding-card {
+    @apply rounded-r bg-harness-bg/50 py-2 pr-2;
+  }
+
+  .btn-approve {
+    @apply inline-flex items-center justify-center gap-2 rounded bg-emerald-600 px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-emerald-500 disabled:opacity-50;
+  }
+
+  .btn-reject-outline {
+    @apply inline-flex items-center justify-center gap-2 rounded border border-red-500/50 bg-transparent px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-red-400 transition hover:bg-red-500/10 disabled:opacity-50;
+  }
+
+  .btn-cyan {
+    @apply inline-flex items-center justify-center gap-2 bg-harness-cyan px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-black transition hover:bg-cyan-300 disabled:opacity-50;
+  }
+
+  .badge-live {
+    @apply rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-harness-green;
+  }
+
+  .badge-awaiting {
+    @apply rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-harness-amber;
+  }
+
+  .badge-building {
+    @apply rounded border border-cyan-500/40 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-harness-cyan;
+  }
+
+  .badge-approved {
+    @apply rounded border border-emerald-500/50 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400;
+  }
+
+  .approval-nav-blink {
+    @apply relative border border-red-500/50 bg-red-500/10 text-red-300;
+    animation: approvalNavBlink 1.2s ease-in-out infinite;
+  }
+
+  .approval-panel-pending {
+    @apply rounded-lg border-2 border-red-500/40 bg-red-950/20;
+    animation: approvalBorderPulse 1.4s ease-in-out infinite;
+  }
+
+  .approval-panel-approved {
+    @apply rounded-lg border-2 border-emerald-500/50 bg-emerald-950/30;
+  }
+
+  .approval-panel-rejected {
+    @apply rounded-lg border-2 border-red-600/50 bg-red-950/40;
+  }
+
+  .project-card-awaiting {
+    animation: approvalBorderPulse 1.4s ease-in-out infinite;
+    @apply border-red-500/50;
+  }
+
+  .debate-msg-enter {
+    animation: debateFadeIn 0.45s ease-out forwards;
+  }
+
+  /* Engineering memory document — readable doc style */
+  .memory-prose {
+    @apply text-slate-200 leading-relaxed;
+  }
+
+  .memory-prose h1 {
+    @apply mb-6 text-2xl font-bold text-white border-b border-harness-border pb-3;
+  }
+
+  .memory-prose h2 {
+    @apply mt-8 mb-3 text-lg font-semibold text-harness-cyan;
+  }
+
+  .memory-prose h3 {
+    @apply mt-4 mb-2 text-base font-medium text-slate-200;
+  }
+
+  .memory-prose p {
+    @apply mb-4 text-[15px] leading-7 text-slate-300;
+  }
+
+  .memory-prose ul {
+    @apply mb-4 ml-1 list-none space-y-2;
+  }
+
+  .memory-prose ul li {
+    @apply relative pl-5 text-[15px] text-slate-300 leading-7;
+  }
+
+  .memory-prose ul li::before {
+    content: "";
+    @apply absolute left-0 top-[0.6em] h-1.5 w-1.5 rounded-full bg-harness-cyan;
+  }
+
+  .memory-prose ol {
+    @apply mb-4 list-decimal space-y-2 pl-6 text-[15px] text-slate-300;
+  }
+
+  .memory-prose strong {
+    @apply font-semibold text-white;
+  }
+
+  .memory-prose hr {
+    @apply my-8 border-harness-border;
+  }
+
+  .memory-prose em {
+    @apply text-slate-400 not-italic text-sm;
+  }
+
+  .memory-prose code {
+    @apply rounded bg-slate-800 px-1.5 py-0.5 text-sm text-harness-cyan;
+  }
+
+  .memory-prose blockquote {
+    @apply border-l-4 border-harness-cyan/50 pl-4 italic text-slate-400;
+  }
+}
+
+@keyframes approvalNavBlink {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 14px 3px rgba(239, 68, 68, 0.45);
+  }
+}
+
+@keyframes approvalBorderPulse {
+  0%,
+  100% {
+    border-color: rgba(239, 68, 68, 0.35);
+  }
+  50% {
+    border-color: rgba(239, 68, 68, 0.75);
+  }
+}
+
+@keyframes debateFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
